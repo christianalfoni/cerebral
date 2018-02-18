@@ -1,6 +1,6 @@
 # Typescript
 
-To get full type safety with Cerebral you should install the `@cerebral/fluent` addon.
+To get full type safety with Cerebral you need to install the **@cerebral/fluent** addon.
 
 `npm install @cerebral/fluent`
 
@@ -13,10 +13,13 @@ Instantiate the **Controller** exposed by `fluent`:
 ```ts
 import Devtools from 'cerebral/devtools'
 import { Controller } from '@cerebral/fluent'
-import { State, Signals } from './app/types'
+import { State, Signals } from './fluent'
 
 export const controller = Controller<State, Signals>(app.module, {
-  devtools: Devtools(...)
+  devtools: Devtools(...),
+  // If you are migrating from existing app, add this option to
+  // allow for the legacy state api
+  useLegacyStateApi: true
 })
 ```
 
@@ -29,7 +32,7 @@ controller.signals
 
 ## Exposing the controller to React
 
-You also expose the **Container** from `fluent`:
+You expose the controller using the **Container** from **fluent**:
 
 ```ts
 import * as React from 'react'
@@ -46,72 +49,19 @@ render(
 )
 ```
 
-## Creating a module types file
-
-You will typically create a separate file for the types. This will hold the types for the state and signals of the given module.
-
-*src/app/types.ts*
-```ts
-import { Dictionary, ComputedValue } from '@cerebral/fluent'
-import * as signals from './sequences'
-
-export type Signals = {
-  [key in keyof typeof signals]: typeof signals[key]
-};
-
-export type State = {
-  foo: string,
-  stringDictionary: Dictionary<string>,
-  isAwesome: ComputedValue<boolean>
-};
-```
-
-Signals can be typed by using **typeof** on the sequences of the module. This is a shorthand that will use the defined required props of the sequence as the payload to the signal.
-
-## Creating the app module
-
-*src/app/index.ts*
-```ts
-import { Module, Dictionary, Computed } from '@cerebral/fluent'
-import Router from '@cerebral/router'
-import * as a from './modules/a'
-import * as b from './modules/b'
-import * as signals from './sequences'
-import * as computed from './computed'
-import { State } from './types'
-
-const state: State = {
-  foo: 'bar',
-  stringDictionary: Dictionary({
-    foo: 'bar',
-    bar: 'baz'
-  }),
-  isAwesome: Computed(computed.isAwesome)
-}
-
-export const module = Module({
-  state,
-  signals,
-  modules: {
-    a: a.module,
-    b: b.module,
-    router: Router({...})
-  }
-})
-```
-
-By defining your state in its own variable you will get easier to read error reporting from Typescript.
+You will later see examples of how you actually connect components.
 
 ## Creating the fluent file
 
-To ease development it is recommended to create a **fluent.ts** file which configures your application. This is an example of such a file:
+To ease development it is recommended to create a **fluent.ts** file which configures your application. It is recommended to create an alias to your fluent
+file for easier imports. Use the [babel alias plugin](https://www.npmjs.com/package/babel-plugin-module-alias) to achieve this. From now on when we point to `'fluent'` it is this file:
 
 ```ts
 import { IContext, IBranchContext, SequenceFactory, SequenceWithPropsFactory, ConnectFactory } from '@cerebral/fluent'
 import { Provider as RouterProvider } from '@cerebral/router';
 import { State, Signals } from './app/types'
 
-// Create an interface where you compose your providers
+// Create an interface where you compose your providers together
 interface Providers {
   router: RouterProvider
 }
@@ -129,19 +79,90 @@ export interface BranchContext<Paths, Props> extends IBranchContext<Paths, Props
 // This function is used to connect components to Cerebral
 export const connect = ConnectFactory<State, Signals>();
 
-// This function is used to define sequences. You can optionally define
-// what you expect the final props to look like. This is useful when composing
-// one sequence into an other
+// This function is used to define sequences
 export const sequence = SequenceFactory<Context>();
 
 // This function is used to define sequences that expect to receive some initial
-// props. You can optionally define what you expect the final props to look like
+// props
 export const sequenceWithProps = SequenceWithPropsFactory<Context>();
 ```
 
+## Creating a module with types
+
+You will typically create a separate file for the types. This will hold the types for the state and signals of the given module.
+
+*src/app/types.ts*
+```ts
+import { Dictionary, ComputedValue } from '@cerebral/fluent'
+import * as signals from './sequences'
+
+// This is a shortcut where all exported sequences are
+// defined as signals
+export type Signals = {
+  [key in keyof typeof signals]: typeof signals[key]
+};
+
+// Alternatively you would have to do this for each signal
+export type Signals = {
+  doThis: typeof signals.doThis
+};
+
+export type State = {
+  foo: string,
+  stringDictionary: Dictionary<string>,
+  isAwesome: ComputedValue<boolean>,
+  upperFoo: string
+};
+```
+
+## Creating the app module
+
+*src/app/index.ts*
+```ts
+import { Module, Dictionary, Computed } from '@cerebral/fluent'
+import Router from '@cerebral/router'
+import * as a from './modules/a'
+import * as b from './modules/b'
+import * as signals from './sequences'
+import * as computed from './computed'
+import { State } from './types'
+
+const state: State = {
+  // Just a normal state value
+  foo: 'bar',
+  // Dynamic objects, meaning you want to add/remove
+  // keys will need to be a Dictionary. 
+  stringDictionary: Dictionary({}),
+  // Computed values receives both the module state and the
+  // root state. Normally you will use this for computational things like
+  // sorting, filtering etc. Where you want to avoid doing the calculation
+  // everytime the value is used. It is used like this: state.isAwesome.get()
+  isAwesome: Computed(computed.isAwesome),
+  // A getter allows you to make state values derived from other state
+  // values. There is no caching involved, but if used it will be observed for
+  // changes like normal values. It is used like this: state.upperFoo
+  get upperFoo () {
+    return this.foo.toUpperCase()
+  }
+}
+
+export const module = Module({
+  state,
+  signals,
+  modules: {
+    a: a.module,
+    b: b.module,
+    router: Router({...})
+  }
+})
+```
+
+By defining your state in its own variable you will get easier to read error reporting from Typescript.
+
+
 ## Scaling up to submodules
 
-When you have submodules you will need to compose in the complete state and signals. You do this in the **fluent** file like this:
+The module definition above has two custom submodules. When you have submodules you will need to compose in the complete state and signals. You do this in the **fluent** file like this:
 
 ```ts
 import { IContext, IBranchContext, SequenceFactory, SequenceWithPropsFactory, ConnectFactory } from '@cerebral/fluent'
@@ -179,12 +200,12 @@ export const sequence = SequenceFactory<Context>();
 export const sequenceWithProps = SequenceWithPropsFactory<Context>();
 ```
 
+The **fluent** file is where you describe your complete application with types.
+
 ## Creating sequences
 
 ```ts
-// It is recommended to create an alias to your fluent
-// file for easier imports. Use the babel alias plugin:
-// https://www.npmjs.com/package/babel-plugin-module-alias
+// remember this is alias to the fluent.ts file
 import { sequence } from 'fluent'
 
 export const changeFoo = sequence(s => s
@@ -192,7 +213,7 @@ export const changeFoo = sequence(s => s
 )
 ```
 
-This sequence gives you full type safety and autosuggestions. If anything is changed you will be notified about any breaking changes. Though inlining actions like this works it is recommended to split them out. The reason is that your sequences will read better and you actions will be composable with other sequences by default.
+This sequence gives you full type safety and autosuggestions. If anything is changed you will be notified by Typescript if your sequence does not work. Though inlining actions like this works it is recommended to split them out. The reason is that your sequences will read better and you actions will be composable with other sequences by default. Like this:
 
 ```ts
 import { sequence } from 'fluent'
@@ -277,15 +298,17 @@ import { User } from './types'
 
 // Now you have made this function composable with any
 // other sequence, meaning that you can safely reuse it
-// wherever you want and instantly be notified is there is a mismatch,
+// wherever you want and instantly be notified if there is a mismatch,
 // for example that the action will indeed not receive the name property
 // by a previous action, sequence or calling the signal
+// Context<Props>
 export function changeNewUserName ({ state, props }: Context<{ name: string }>) {
   state.newUserName = props.name
 }
 
 // With the BranchContext type you ensure that this action has
 // the defined paths available in the sequence it is composed into
+// BranchContext<Paths, Props>
 export function submitNewUser ({ state, http, path }: BranchContext<{
   success: { user: User },
   error: {}
@@ -298,7 +321,7 @@ export function submitNewUser ({ state, http, path }: BranchContext<{
 }
 ```
 
-The **Context** does not require you to define props. The **BranchContext** takes a second type argument which would be the props used by the action.
+Both **Context** and **BranchContext** as optional **Props**.
 
 ## Connecting components
 
@@ -398,7 +421,129 @@ export default connect()
 
 Connecting to a class gives a callback with the prop which you can **typeof** into the component class. This gives type safety and auto suggestions on the props in the component itself.
 
+## Dictionary
+Typically your state objects are used to define other specifc state, like:
+
+```ts
+type State = {
+  settings: {
+    isAwesome: boolean,
+    hasBananas: boolean
+  }
+}
+
+const state: State = {
+  settings: {
+    isAwesome: true,
+    hasBananas: false
+  }
+}
+```
+
+The **settings** object will never have keys added or removed from it. But a state like:
+
+```ts
+type User = {
+  name: string
+}
+
+type State = {
+  users: { [id: string] : User}
+}
+
+const state: State = {
+  users: {}
+}
+```
+
+Will dynamically have keys added and removed. That is where you have to use a **Dictionary**:
+
+```ts
+import { Dictionary } from '@cerebral/fluent
+
+type User = {
+  name: string
+}
+
+type State = {
+  users: Dictionary<User>
+}
+
+const state: State = {
+  users: Dictionary({})
+}
+```
+
+The dictionary is an **ObservableMap** from Mobx. It has its own API surface:
+
+```ts
+function someAction ({ state }) {
+  const user = state.users.get('123')
+  state.users.set('123', { name: 'John ' })
+  state.users.delete('123')
+  state.users.clear()
+  state.users.merge({
+    '456': { name: 'Bob' },
+    '789': { name: 'Derek' }
+  })
+}
+```
+
+Whenever you have this dynamic nature, use a **Dictionary**. Typescript will of course give you hints about this when you point to it.
+
 ## Computing values
 
-## Dictionary
+Typically you will just use a getter when you are deriving state:
 
+```ts
+type State = {
+  foo: string,
+  upperFoo: string
+}
+
+const state: State = {
+  foo: 'bar',
+  get upperFoo() {
+    return this.foo.toUpperCase()
+  }
+}
+```
+
+There is really no computational power needed to do this. When you have more complex getters it is a good idea to move them into their own files:
+
+```ts
+import * as getters from './getters'
+
+type State = {
+  foo: string,
+  upperFoo: string
+}
+
+const state: State = {
+  foo: 'bar',
+  get upperFoo() {
+    return getters.upperFoo(this)
+  }
+}
+```
+
+When you are doing more heavy calulations though it is nice to compute. So for example if we created a color based on the text of **foo**:
+
+```ts
+import stringToColor from 'string-to-color'
+import { ComputedValue } from '@cerebral/fluent
+
+type State = {
+  foo: string,
+  fooColor: ComputedValue<string>
+}
+
+const state: State = {
+  foo: 'bar',
+  fooColor: Computed((state) => {
+    return stringToColor(state.foo)
+  })
+}
+```
+
+There is really no reason to recalculate the color everytime we grab **fooColor**, unless **foo** itself actually changed. This is where a computed helps. It caches the returned value until any of the depending state has changed.
