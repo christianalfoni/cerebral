@@ -54,7 +54,20 @@ You will later see examples of how you actually connect components.
 ## Creating the fluent file
 
 To ease development it is recommended to create a **fluent.ts** file which configures your application. It is recommended to create an alias to your fluent
-file for easier imports. Use the [babel alias plugin](https://www.npmjs.com/package/babel-plugin-module-alias) to achieve this. From now on when we point to `'fluent'` it is this file:
+file for easier imports. This can be done in your **tsconfig.json** file:
+
+```ts
+{
+  "compilerOptions": {
+    "baseUrl": ".", // This must be specified if "paths" is.
+    "paths": {
+      "fluent": ["src/fluent.ts"] // This mapping is relative to "baseUrl"
+    }
+  }
+}
+```
+
+From now on when we point to `'fluent'` it is this file:
 
 ```ts
 import { IContext, IBranchContext, SequenceFactory, SequenceWithPropsFactory, ConnectFactory } from '@cerebral/fluent'
